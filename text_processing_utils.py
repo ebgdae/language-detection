@@ -1,6 +1,7 @@
 import collections
 import pandas as pd
-from typing import List, Tuple
+from typing import List, Tuple, Dict
+
 
 def get_all_ngram_counts(text_sample: str, n: int) -> collections.Counter:
     """
@@ -92,4 +93,80 @@ def get_distribution_distance(language_dict: List[Tuple[str, int]], sample_dict:
         if not present:
             distance += len(sample_dict)-i
     return distance
+
+
+def create_train_validate_test_sets(df : pd.DataFrame, train_size: float, validate_size: float, test_size: float) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    create_test_train_validate_sets 
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        
+    train_size : float
+        Training set size (in percentage, 0-100)
+    test_size : float
+        
+    validate_size : float
     
+    Returns
+    -------
+    Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
+        training, validation, and test sets
+    """
+    assert train_size + test_size + validate_size == 100.0, 'the three set sizes should add up to 100%'
+
+    train_df = pd.DataFrame(columns=df.columns)
+    validate_df = pd.DataFrame(columns=df.columns)
+    test_df = pd.DataFrame(columns=df.columns)
+    languages = df.language.unique()
+
+    for l in languages:
+        language_df = df[df.language == l]
+        language_train = language_df.sample(frac=train_size/100)
+        test_and_validate = language_df.drop(language_train.index)
+        language_validate = test_and_validate.sample(frac=validate_size/(validate_size + test_size))
+        language_test = test_and_validate.drop(language_validate.index)
+
+        train_df = train_df.append(language_train)
+        validate_df = validate_df.append(language_test)
+        test_df = test_df.append(language_test)
+
+    return (train_df, validate_df, test_df)
+
+
+def predict_language(text_sample: str, dictionaries: Dict, ngram_values: List[int], ngrams_per_dictionary: int) -> str:
+    """
+    predict_language predicts a language for a text sample
+
+    Parameters
+    ----------
+    text_sample : str
+        the text sample to predict
+    dictionaries : Dict
+        all dictionaries for each language
+    ngram_values : List[int]
+        the ngram values to use. If more than one ngram value, the mean distance is used
+    ngrams_per_dictionary : int
+        The size of each dictionary
+    Returns
+    -------
+    str
+        language
+    """
+    sample_dictionaries = []
+    for i in ngram_values:
+        n_dictionary = get_all_ngram_counts(text_sample, i)
+        n_dictionary = n_dictionary.most_common(ngrams_per_dictionary)
+        sample_dictionaries.append(n_dictionary)
+    
+    language_distances = []
+    for language, language_dicts in dictionaries.items():
+        language_distance = 0
+        for i, val in enumerate(ngram_values):
+            language_distance += get_distribution_distance(language_dicts[val-1], sample_dictionaries[i])
+        language_distances.append((language, language_distance))
+    
+    closest_language = min(language_distances, key = lambda t:t[1])
+    return closest_language[0]
+
